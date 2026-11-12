@@ -1,0 +1,34 @@
+name: Prepare EduMate Play Store App Bundle
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install API 36
+        run: |
+          yes | "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - name: Build release bundle (unsigned staging artifact only)
+        run: gradle --no-daemon :app:bundleRelease
+      - name: Upload unsigned AAB for signing later
+        uses: actions/upload-artifact@v4
+        with:
+          name: EduMate-unsigned-AAB-NOT-FOR-PLAY-UPLOAD
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 7
