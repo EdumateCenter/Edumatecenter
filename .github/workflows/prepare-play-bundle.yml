@@ -1,4 +1,4 @@
-name: Prepare EduMate Play Store App Bundle
+name: Build Signed EduMate Play Store AAB
 
 on:
   workflow_dispatch:
@@ -7,28 +7,63 @@ permissions:
   contents: read
 
 jobs:
-  bundle:
+  signed-release-bundle:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      EDUMATE_KEYSTORE_BASE64: ${{ secrets.EDUMATE_KEYSTORE_BASE64 }}
+      EDUMATE_STORE_PASSWORD: ${{ secrets.EDUMATE_STORE_PASSWORD }}
+      EDUMATE_KEY_ALIAS: ${{ secrets.EDUMATE_KEY_ALIAS }}
+      EDUMATE_KEY_PASSWORD: ${{ secrets.EDUMATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Install API 36
+
+      - name: Verify release signing credentials exist
+        shell: bash
+        run: |
+          if [[ -z "$EDUMATE_KEYSTORE_BASE64" || -z "$EDUMATE_STORE_PASSWORD" || -z "$EDUMATE_KEY_ALIAS" || -z "$EDUMATE_KEY_PASSWORD" ]]; then
+            echo "::error::Configure all 4 EDUMATE signing secrets in repository Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+
+      - name: Set up Android SDK
+        shell: bash
         run: |
           yes | "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
-      - name: Build release bundle (unsigned staging artifact only)
+
+      - name: Decode release upload key without printing credentials
+        shell: bash
+        run: |
+          umask 077
+          KEYSTORE_PATH="$RUNNER_TEMP/edumate-upload-key.jks"
+          printf '%s' "$EDUMATE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          if [[ ! -s "$KEYSTORE_PATH" ]]; then
+            echo "::error::Keystore missing or empty"
+            exit 1
+          fi
+          echo "EDUMATE_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Build signed Play Store release bundle
         run: gradle --no-daemon :app:bundleRelease
-      - name: Upload unsigned AAB for signing later
+
+      - name: Upload signed AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EduMate-unsigned-AAB-NOT-FOR-PLAY-UPLOAD
+          name: EduMate-SIGNED-PlayStore-AAB
           path: app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
           retention-days: 7
+
+      - name: Remove ephemeral upload key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/edumate-upload-key.jks"
