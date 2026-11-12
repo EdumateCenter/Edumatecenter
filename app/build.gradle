@@ -10,8 +10,24 @@ android {
         versionCode 2
         versionName '1.2.0'
     }
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv('EDUMATE_KEYSTORE_PATH')
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('EDUMATE_STORE_PASSWORD')
+                keyAlias System.getenv('EDUMATE_KEY_ALIAS')
+                keyPassword System.getenv('EDUMATE_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            if (System.getenv('EDUMATE_KEYSTORE_PATH')) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
